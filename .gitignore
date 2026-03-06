@@ -1,0 +1,29 @@
+# Binaries
+bin/
+*.exe
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+
+# Coverage
+coverage.out
+coverage.html
+
+# Docs (generated)
+docs/
+
+# Temp
+tmp/
