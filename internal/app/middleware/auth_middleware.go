@@ -119,7 +119,7 @@ func getPermissionsForRole(role string) []string {
 
 	modPerms := append(creatorPerms,
 		"moderation:view_queue", "moderation:approve", "moderation:reject",
-		"moderation:view_history", "post:hide",
+		"moderation:view_history", "moderation:review", "post:hide",
 	)
 
 	adminPerms := append(modPerms,
