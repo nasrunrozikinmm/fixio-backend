@@ -10,6 +10,7 @@ import (
 	"fixio/pkg/apperrors"
 	"fixio/pkg/helpers"
 	"fixio/pkg/network"
+	"fixio/pkg/sanitizer"
 
 	"github.com/google/uuid"
 )
@@ -22,6 +23,7 @@ type PostService interface {
 	Update(ctx context.Context, id, userID uuid.UUID, req *dto.UpdatePostRequest) (*models.Post, error)
 	Delete(ctx context.Context, id, userID uuid.UUID, userRole string) error
 	GetByUserID(ctx context.Context, userID uuid.UUID, pagination network.Pagination) (*network.PaginatedResult[models.Post], error)
+	GetRelated(ctx context.Context, id uuid.UUID, limit int) ([]models.Post, error)
 }
 
 type postService struct {
@@ -59,6 +61,9 @@ func (s *postService) GetAll(ctx context.Context, pagination network.Pagination,
 		}
 		if filter.UserID != nil {
 			filterMap["user_id"] = *filter.UserID
+		}
+		if len(filter.UserIDs) > 0 {
+			filterMap["user_ids"] = filter.UserIDs
 		}
 		search = filter.Search
 	}
@@ -104,10 +109,11 @@ func (s *postService) Create(ctx context.Context, userID uuid.UUID, req *dto.Cre
 		Title:          req.Title,
 		SectorID:       req.SectorID,
 		RegionID:       req.RegionID,
-		Criticism:      req.Criticism,
-		Solution:       req.Solution,
+		Criticism:      sanitizer.SanitizeHTML(req.Criticism),
+		Solution:       sanitizer.SanitizeHTML(req.Solution),
 		ImpactEstimate: req.ImpactEstimate,
 		References:     req.References,
+		Images:         models.StringArray(req.Images),
 		Status:         status,
 	}
 
@@ -141,16 +147,19 @@ func (s *postService) Update(ctx context.Context, id, userID uuid.UUID, req *dto
 		post.RegionID = req.RegionID
 	}
 	if req.Criticism != "" {
-		post.Criticism = req.Criticism
+		post.Criticism = sanitizer.SanitizeHTML(req.Criticism)
 	}
 	if req.Solution != "" {
-		post.Solution = req.Solution
+		post.Solution = sanitizer.SanitizeHTML(req.Solution)
 	}
 	if req.ImpactEstimate != "" {
 		post.ImpactEstimate = req.ImpactEstimate
 	}
 	if req.References != "" {
 		post.References = req.References
+	}
+	if req.Images != nil {
+		post.Images = models.StringArray(req.Images)
 	}
 
 	// Reset status to pending_review when edited
@@ -211,4 +220,24 @@ func (s *postService) GetByUserID(ctx context.Context, userID uuid.UUID, paginat
 			HasPrev:    pagination.Page > 1,
 		},
 	}, nil
+}
+
+// GetRelated retrieves related posts for a given post (same sector, fallback to popular)
+func (s *postService) GetRelated(ctx context.Context, id uuid.UUID, limit int) ([]models.Post, error) {
+	if limit < 1 || limit > 10 {
+		limit = 5
+	}
+
+	// Get the source post to find its sector
+	post, err := s.repo.FindByIDWithRelations(ctx, id)
+	if err != nil {
+		return nil, apperrors.NewNotFound("Post tidak ditemukan", err)
+	}
+
+	related, err := s.repo.GetRelated(ctx, id, post.SectorID, limit)
+	if err != nil {
+		return nil, apperrors.NewInternal("Gagal mengambil post terkait", err)
+	}
+
+	return related, nil
 }

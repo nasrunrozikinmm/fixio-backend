@@ -10,10 +10,11 @@ type CreatePostRequest struct {
 	Title          string     `json:"title" validate:"required,max=255"`
 	SectorID       *uuid.UUID `json:"sector_id" validate:"omitempty"`
 	RegionID       *uuid.UUID `json:"region_id" validate:"omitempty"`
-	Criticism      string     `json:"criticism" validate:"required,min=10"`
-	Solution       string     `json:"solution" validate:"required,min=10"`
+	Criticism      string     `json:"criticism" validate:"required,min=10,max=10000"`
+	Solution       string     `json:"solution" validate:"required,min=10,max=10000"`
 	ImpactEstimate string     `json:"impact_estimate" validate:"omitempty"`
 	References     string     `json:"references" validate:"omitempty"`
+	Images         []string   `json:"images" validate:"omitempty,max=5,dive,url"`
 	Status         string     `json:"status" validate:"omitempty,oneof=draft pending_review"`
 }
 
@@ -51,10 +52,11 @@ type UpdatePostRequest struct {
 	Title          string     `json:"title" validate:"omitempty,max=255"`
 	SectorID       *uuid.UUID `json:"sector_id" validate:"omitempty"`
 	RegionID       *uuid.UUID `json:"region_id" validate:"omitempty"`
-	Criticism      string     `json:"criticism" validate:"omitempty,min=10"`
-	Solution       string     `json:"solution" validate:"omitempty,min=10"`
+	Criticism      string     `json:"criticism" validate:"omitempty,min=10,max=10000"`
+	Solution       string     `json:"solution" validate:"omitempty,min=10,max=10000"`
 	ImpactEstimate string     `json:"impact_estimate" validate:"omitempty"`
 	References     string     `json:"references" validate:"omitempty"`
+	Images         []string   `json:"images" validate:"omitempty,max=5,dive,url"`
 }
 
 func (r *UpdatePostRequest) GetValue() *UpdatePostRequest { return r }
@@ -76,9 +78,10 @@ func (r *UpdatePostRequest) ValidateErrors(errs validator.ValidationErrors) ([]s
 
 // PostFilter represents query filters for listing posts
 type PostFilter struct {
-	SectorID *uuid.UUID `json:"sector_id" query:"sector_id"`
-	RegionID *uuid.UUID `json:"region_id" query:"region_id"`
-	Status   string     `json:"status" query:"status"`
-	UserID   *uuid.UUID `json:"user_id" query:"user_id"`
-	Search   string     `json:"search" query:"search"`
+	SectorID *uuid.UUID  `json:"sector_id" query:"sector_id"`
+	RegionID *uuid.UUID  `json:"region_id" query:"region_id"`
+	Status   string      `json:"status" query:"status"`
+	UserID   *uuid.UUID  `json:"user_id" query:"user_id"`
+	Search   string      `json:"search" query:"search"`
+	UserIDs  []uuid.UUID `json:"-" query:"-"` // Programmatic only, not from query string
 }

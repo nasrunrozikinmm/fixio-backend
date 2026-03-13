@@ -4,7 +4,10 @@ import (
 	"log"
 
 	authModels "fixio/internal/modules/auth/entity"
+	bookmarkModels "fixio/internal/modules/bookmark/entity"
 	commentModels "fixio/internal/modules/comment/entity"
+	followModels "fixio/internal/modules/follow/entity"
+	notifModels "fixio/internal/modules/notification/entity"
 	postModels "fixio/internal/modules/post/entity"
 	regionModels "fixio/internal/modules/region/entity"
 	sectorModels "fixio/internal/modules/sector/entity"
@@ -14,6 +17,7 @@ import (
 	"fixio/internal/platform/seeder"
 	"fixio/pkg/config"
 	"fixio/pkg/network"
+	"fixio/pkg/storage"
 )
 
 // Server represents the application server
@@ -42,6 +46,9 @@ func NewServer() *Server {
 		&postModels.Post{},
 		&voteModels.Vote{},
 		&commentModels.Comment{},
+		&followModels.Follow{},
+		&bookmarkModels.Bookmark{},
+		&notifModels.Notification{},
 	)
 
 	// 4. Connect to Redis
@@ -53,16 +60,27 @@ func NewServer() *Server {
 	seeder.SeedDefaultRegions(db)
 	seeder.SeedSampleData(db)
 
-	// 6. Create DI module
-	module := NewModule(env, db, cacheStore)
+	// 6. Connect to MinIO (optional — non-fatal if unavailable)
+	var storageClient *storage.Client
+	if env.MinioEndpoint != "" && env.MinioAccessKey != "" {
+		sc, err := storage.NewMinioClient(env)
+		if err != nil {
+			log.Printf("⚠️  MinIO not available: %v (image uploads disabled)", err)
+		} else {
+			storageClient = sc
+		}
+	}
 
-	// 7. Create Fiber app
+	// 7. Create DI module
+	module := NewModule(env, db, cacheStore, storageClient)
+
+	// 8. Create Fiber app
 	app := network.NewApp(env.ServerReadTimeout, env.FrontendURL)
 
-	// 8. Mount routes
+	// 9. Mount routes
 	app.LoadControllersAndMountRoutes(module.Controllers())
 
-	// 9. Setup Swagger
+	// 10. Setup Swagger
 	app.LoadSwagger()
 
 	log.Println("✅ Server bootstrap completed")

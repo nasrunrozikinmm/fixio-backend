@@ -23,10 +23,10 @@ func SeedDefaultAdmin(db *gorm.DB, env *config.Environment) {
 	admin := &models.User{
 		ID:         uuid.New(),
 		Name:       "Administrator",
-		Email:      "admin@fixio.id",
+		Email:      "mapokace@gmail.com",
 		Role:       helpers.RoleAdministrator,
-		Provider:   "system",
-		ProviderID: "system-admin-001",
+		Provider:   helpers.ProviderGoogle,
+		ProviderID: "google-admin-001",
 	}
 
 	if err := db.Create(admin).Error; err != nil {

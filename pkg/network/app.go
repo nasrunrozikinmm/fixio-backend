@@ -21,6 +21,7 @@ func NewApp(readTimeout int, frontendURL string) *App {
 	app := fiber.New(fiber.Config{
 		ReadTimeout:  time.Duration(readTimeout) * time.Second,
 		WriteTimeout: time.Duration(readTimeout) * time.Second,
+		BodyLimit:    25 * 1024 * 1024, // 25 MB for image uploads
 		ErrorHandler: func(ctx *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			if e, ok := err.(*fiber.Error); ok {

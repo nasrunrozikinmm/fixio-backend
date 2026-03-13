@@ -38,6 +38,13 @@ type Environment struct {
 
 	// Frontend
 	FrontendURL string `mapstructure:"FRONTEND_URL"`
+
+	// MinIO (S3-compatible object storage)
+	MinioEndpoint  string `mapstructure:"MINIO_ENDPOINT"`
+	MinioAccessKey string `mapstructure:"MINIO_ACCESS_KEY"`
+	MinioSecretKey string `mapstructure:"MINIO_SECRET_KEY"`
+	MinioBucket    string `mapstructure:"MINIO_BUCKET"`
+	MinioUseSSL    bool   `mapstructure:"MINIO_USE_SSL"`
 }
 
 // NewEnvironment loads environment variables from .env file and returns an Environment struct
@@ -70,6 +77,12 @@ func NewEnvironment() *Environment {
 	}
 	if env.Environment == "" {
 		env.Environment = "development"
+	}
+	if env.MinioEndpoint == "" {
+		env.MinioEndpoint = "localhost:9000"
+	}
+	if env.MinioBucket == "" {
+		env.MinioBucket = "fixio"
 	}
 
 	return env

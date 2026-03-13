@@ -20,6 +20,8 @@ type PostRepository interface {
 	GetByStatus(ctx context.Context, status string, page, limit int) ([]models.Post, int64, error)
 	IncrementVoteCount(ctx context.Context, postID uuid.UUID, delta int) error
 	IncrementCommentCount(ctx context.Context, postID uuid.UUID, delta int) error
+	GetByIDs(ctx context.Context, ids []uuid.UUID) ([]models.Post, error)
+	GetRelated(ctx context.Context, postID uuid.UUID, sectorID *uuid.UUID, limit int) ([]models.Post, error)
 }
 
 type postRepository struct {
@@ -45,7 +47,11 @@ func (r *postRepository) GetWithRelations(ctx context.Context, page, limit int, 
 	// Apply filters
 	for key, value := range filter {
 		if value != nil && value != "" {
-			query = query.Where(fmt.Sprintf("%s = ?", key), value)
+			if key == "user_ids" {
+				query = query.Where("user_id IN (?)", value)
+			} else {
+				query = query.Where(fmt.Sprintf("%s = ?", key), value)
+			}
 		}
 	}
 
@@ -165,4 +171,73 @@ func (r *postRepository) IncrementCommentCount(ctx context.Context, postID uuid.
 		Where("id = ?", postID).
 		UpdateColumn("comment_count", gorm.Expr("comment_count + ?", delta)).
 		Error
+}
+
+// GetByIDs retrieves posts by a list of IDs with relations preloaded
+func (r *postRepository) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]models.Post, error) {
+	if len(ids) == 0 {
+		return []models.Post{}, nil
+	}
+	var posts []models.Post
+	err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Sector").
+		Preload("Region").
+		Where("id IN ?", ids).
+		Find(&posts).Error
+	if err != nil {
+		return nil, err
+	}
+	return posts, nil
+}
+
+// GetRelated retrieves related posts based on the same sector, excluding the current post.
+// Falls back to latest approved posts if no sector match is found.
+func (r *postRepository) GetRelated(ctx context.Context, postID uuid.UUID, sectorID *uuid.UUID, limit int) ([]models.Post, error) {
+	var posts []models.Post
+
+	query := r.db.WithContext(ctx).
+		Where("id != ? AND status = ?", postID, "approved").
+		Preload("User").
+		Preload("Sector").
+		Preload("Region")
+
+	if sectorID != nil {
+		// Primary: same sector, ordered by vote_count desc
+		query = query.Where("sector_id = ?", *sectorID)
+	}
+
+	err := query.
+		Order("vote_count DESC, created_at DESC").
+		Limit(limit).
+		Find(&posts).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Fallback: if sector-based query yields too few results, fill with latest approved posts
+	if sectorID != nil && len(posts) < limit {
+		existingIDs := make([]uuid.UUID, len(posts))
+		for i, p := range posts {
+			existingIDs[i] = p.ID
+		}
+		excludeIDs := append(existingIDs, postID)
+		remaining := limit - len(posts)
+
+		var fallbackPosts []models.Post
+		err = r.db.WithContext(ctx).
+			Where("id NOT IN ? AND status = ?", excludeIDs, "approved").
+			Preload("User").
+			Preload("Sector").
+			Preload("Region").
+			Order("vote_count DESC, created_at DESC").
+			Limit(remaining).
+			Find(&fallbackPosts).Error
+		if err != nil {
+			return posts, nil // Return what we have; don't fail on fallback
+		}
+		posts = append(posts, fallbackPosts...)
+	}
+
+	return posts, nil
 }

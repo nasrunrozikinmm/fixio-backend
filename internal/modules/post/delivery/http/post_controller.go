@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	followServices "fixio/internal/modules/follow/usecase"
 	"fixio/internal/modules/post/dto"
 	services "fixio/internal/modules/post/usecase"
 	"fixio/pkg/network"
@@ -11,7 +12,8 @@ import (
 
 type postController struct {
 	network.BaseController
-	service services.PostService
+	service       services.PostService
+	followService followServices.FollowService
 }
 
 // NewPostController creates a new post controller
@@ -19,15 +21,19 @@ func NewPostController(
 	authFn network.AuthenticationProvider,
 	authzFn network.AuthorizationProvider,
 	service services.PostService,
+	followService followServices.FollowService,
 ) network.Controller {
 	return &postController{
 		BaseController: network.NewBaseController("/posts", authFn, authzFn),
 		service:        service,
+		followService:  followService,
 	}
 }
 
 // MountRoutes registers all post routes
 func (c *postController) MountRoutes(rg *fiber.Group) {
+	rg.Get("/following", c.Authentication(), c.GetFollowingFeed)
+	rg.Get("/:id/related", c.GetRelated)
 	rg.Get("/", c.GetAll)
 	rg.Get("/:id", c.GetByID)
 	rg.Post("/", c.Authentication(), c.Grant("post:create"), c.Create)
@@ -93,6 +99,34 @@ func (c *postController) GetByID(ctx *fiber.Ctx) error {
 	}
 
 	return c.Send(ctx).SuccessDataResponse("Detail post berhasil diambil", post)
+}
+
+// GetRelated godoc
+// @Summary     Post terkait
+// @Description Mengambil post terkait berdasarkan sektor yang sama
+// @Tags        Posts
+// @Accept      json
+// @Produce     json
+// @Param       id    path  string true  "Post ID (UUID)"
+// @Param       limit query int    false "Jumlah post terkait" default(5)
+// @Success     200 {object} network.Response "Post terkait berhasil diambil"
+// @Failure     400 {object} network.ErrorResponse "ID tidak valid"
+// @Failure     404 {object} network.ErrorResponse "Post tidak ditemukan"
+// @Router      /api/posts/{id}/related [get]
+func (c *postController) GetRelated(ctx *fiber.Ctx) error {
+	id, err := uuid.Parse(ctx.Params("id"))
+	if err != nil {
+		return c.Send(ctx).BadRequestError(network.ErrInvalidID, err)
+	}
+
+	limit := ctx.QueryInt("limit", 5)
+
+	posts, err := c.service.GetRelated(ctx.Context(), id, limit)
+	if err != nil {
+		return c.Send(ctx).HandleError(err)
+	}
+
+	return c.Send(ctx).SuccessDataResponse("Post terkait berhasil diambil", posts)
 }
 
 // Create godoc
@@ -197,4 +231,55 @@ func (c *postController) Delete(ctx *fiber.Ctx) error {
 	}
 
 	return c.Send(ctx).SuccessMsgResponse("Post berhasil dihapus")
+}
+
+// GetFollowingFeed godoc
+// @Summary     Feed dari yang diikuti
+// @Description Mengambil post dari user-user yang diikuti oleh user yang login
+// @Tags        Posts
+// @Security    BearerAuth
+// @Produce     json
+// @Param       page  query int    false "Nomor halaman" default(1)
+// @Param       limit query int    false "Jumlah item per halaman" default(10)
+// @Param       sort  query string false "Pengurutan" default(created_at desc)
+// @Success     200 {object} network.Response "Following feed berhasil diambil"
+// @Failure     401 {object} network.ErrorResponse "Unauthorized"
+// @Router      /api/posts/following [get]
+func (c *postController) GetFollowingFeed(ctx *fiber.Ctx) error {
+	userIDStr, _ := ctx.Locals("userId").(string)
+	userID, _ := uuid.Parse(userIDStr)
+
+	pagination := network.DefaultPagination()
+	if err := ctx.QueryParser(&pagination); err != nil {
+		return c.Send(ctx).BadRequestError(network.ErrInvalidPagination, err)
+	}
+
+	// Get IDs of users that the current user follows
+	followingIDs, err := c.followService.GetFollowingIDs(ctx.Context(), userID)
+	if err != nil {
+		return c.Send(ctx).HandleError(err)
+	}
+
+	// If not following anyone, return empty result
+	if len(followingIDs) == 0 {
+		return c.Send(ctx).SuccessDataResponse("Following feed berhasil diambil", &network.PaginatedResult[any]{
+			Data: []any{},
+			Pagination: network.PaginationMeta{
+				Page:  pagination.Page,
+				Limit: pagination.Limit,
+				Total: 0,
+			},
+		})
+	}
+
+	filter := &dto.PostFilter{
+		UserIDs: followingIDs,
+	}
+
+	result, err := c.service.GetAll(ctx.Context(), pagination, filter)
+	if err != nil {
+		return c.Send(ctx).HandleError(err)
+	}
+
+	return c.Send(ctx).SuccessDataResponse("Following feed berhasil diambil", result)
 }
