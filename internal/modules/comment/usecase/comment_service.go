@@ -12,6 +12,7 @@ import (
 	"fixio/pkg/network"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // CommentService defines comment business operations
@@ -19,18 +20,22 @@ type CommentService interface {
 	GetByPostID(ctx context.Context, postID uuid.UUID, pagination network.Pagination) (*network.PaginatedResult[models.Comment], error)
 	Create(ctx context.Context, userID, postID uuid.UUID, content string, parentID *uuid.UUID) (*models.Comment, error)
 	Delete(ctx context.Context, commentID, userID uuid.UUID, userRole string) error
+	ToggleVote(ctx context.Context, userID, commentID uuid.UUID) (voted bool, newCount int, err error)
+	GetUserVotes(ctx context.Context, userID uuid.UUID, commentIDs []uuid.UUID) ([]uuid.UUID, error)
 }
 
 type commentService struct {
-	commentRepo repositories.CommentRepository
-	postRepo    postRepo.PostRepository
+	commentRepo     repositories.CommentRepository
+	commentVoteRepo repositories.CommentVoteRepository
+	postRepo        postRepo.PostRepository
 }
 
 // NewCommentService creates a new CommentService
-func NewCommentService(commentRepo repositories.CommentRepository, postRepo postRepo.PostRepository) CommentService {
+func NewCommentService(commentRepo repositories.CommentRepository, commentVoteRepo repositories.CommentVoteRepository, postRepo postRepo.PostRepository) CommentService {
 	return &commentService{
-		commentRepo: commentRepo,
-		postRepo:    postRepo,
+		commentRepo:     commentRepo,
+		commentVoteRepo: commentVoteRepo,
+		postRepo:        postRepo,
 	}
 }
 
@@ -132,4 +137,51 @@ func (s *commentService) Delete(ctx context.Context, commentID, userID uuid.UUID
 	s.postRepo.IncrementCommentCount(ctx, comment.PostID, -1)
 
 	return nil
+}
+
+// ToggleVote toggles a user's upvote on a comment. Returns new voted state and updated vote count.
+func (s *commentService) ToggleVote(ctx context.Context, userID, commentID uuid.UUID) (bool, int, error) {
+	// Check comment exists
+	comment, err := s.commentRepo.FindByIDWithUser(ctx, commentID)
+	if err != nil {
+		return false, 0, apperrors.NewNotFound("Komentar tidak ditemukan", err)
+	}
+
+	existing, err := s.commentVoteRepo.FindByUserAndComment(ctx, userID, commentID)
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return false, 0, apperrors.NewInternal("Gagal memeriksa vote", err)
+	}
+
+	voted := false
+	if existing != nil {
+		// Already voted → remove
+		if err := s.commentVoteRepo.DeleteByUserAndComment(ctx, userID, commentID); err != nil {
+			return false, 0, apperrors.NewInternal("Gagal menghapus vote", err)
+		}
+		_ = s.commentVoteRepo.IncrementVoteCount(ctx, commentID, -1)
+		voted = false
+	} else {
+		// Not voted → add
+		vote := &models.CommentVote{
+			UserID:    userID,
+			CommentID: commentID,
+		}
+		if err := s.commentVoteRepo.Create(ctx, vote); err != nil {
+			return false, 0, apperrors.NewInternal("Gagal menyimpan vote", err)
+		}
+		_ = s.commentVoteRepo.IncrementVoteCount(ctx, commentID, 1)
+		voted = true
+	}
+
+	// Reload to get fresh vote_count
+	updated, err := s.commentRepo.FindByIDWithUser(ctx, commentID)
+	if err != nil {
+		return voted, comment.VoteCount, nil // fallback to stale count
+	}
+	return voted, updated.VoteCount, nil
+}
+
+// GetUserVotes returns comment IDs from the given set that the user has voted on
+func (s *commentService) GetUserVotes(ctx context.Context, userID uuid.UUID, commentIDs []uuid.UUID) ([]uuid.UUID, error) {
+	return s.commentVoteRepo.GetUserVotes(ctx, userID, commentIDs)
 }

@@ -31,6 +31,7 @@ func NewSectorController(
 // MountRoutes registers all sector routes
 func (c *sectorController) MountRoutes(rg *fiber.Group) {
 	// Public
+	rg.Get("/trending", c.GetTrending)
 	rg.Get("/", c.GetAll)
 	rg.Get("/:id", c.GetByID)
 	// Admin only
@@ -61,6 +62,34 @@ func (c *sectorController) GetAll(ctx *fiber.Ctx) error {
 		return c.Send(ctx).HandleError(err)
 	}
 	return c.Send(ctx).SuccessDataResponse("Daftar sektor berhasil diambil", result)
+}
+
+// GetTrending godoc
+// @Summary     Sektor trending
+// @Description Mengambil daftar sektor dengan post terbanyak dalam waktu tertentu
+// @Tags        Sectors
+// @Accept      json
+// @Produce     json
+// @Param       days  query int false "Rentang waktu dalam hari" default(7)
+// @Param       limit query int false "Jumlah sektor" default(5)
+// @Success     200 {object} network.Response "Sektor trending berhasil diambil"
+// @Router      /api/sectors/trending [get]
+func (c *sectorController) GetTrending(ctx *fiber.Ctx) error {
+	days := ctx.QueryInt("days", 7)
+	limit := ctx.QueryInt("limit", 5)
+
+	if days < 1 {
+		days = 7
+	}
+	if limit < 1 || limit > 20 {
+		limit = 5
+	}
+
+	result, err := c.service.GetTrending(ctx.Context(), days, limit)
+	if err != nil {
+		return c.Send(ctx).HandleError(err)
+	}
+	return c.Send(ctx).SuccessDataResponse("Sektor trending berhasil diambil", result)
 }
 
 // GetByID godoc

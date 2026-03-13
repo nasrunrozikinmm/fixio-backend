@@ -10,6 +10,7 @@ import (
 	notifModels "fixio/internal/modules/notification/entity"
 	postModels "fixio/internal/modules/post/entity"
 	regionModels "fixio/internal/modules/region/entity"
+	reportModels "fixio/internal/modules/report/entity"
 	sectorModels "fixio/internal/modules/sector/entity"
 	voteModels "fixio/internal/modules/vote/entity"
 	"fixio/internal/platform/database"
@@ -46,9 +47,11 @@ func NewServer() *Server {
 		&postModels.Post{},
 		&voteModels.Vote{},
 		&commentModels.Comment{},
+		&commentModels.CommentVote{},
 		&followModels.Follow{},
 		&bookmarkModels.Bookmark{},
 		&notifModels.Notification{},
+		&reportModels.Report{},
 	)
 
 	// 4. Connect to Redis

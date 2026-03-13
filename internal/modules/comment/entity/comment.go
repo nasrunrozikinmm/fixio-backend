@@ -16,6 +16,7 @@ type Comment struct {
 	PostID    uuid.UUID      `json:"post_id" gorm:"type:uuid;index;not null"`
 	ParentID  *uuid.UUID     `json:"parent_id" gorm:"type:uuid;index"` // nullable — reply
 	Content   string         `json:"content" gorm:"type:text;not null"`
+	VoteCount int            `json:"vote_count" gorm:"default:0"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`

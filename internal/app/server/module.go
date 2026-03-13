@@ -15,6 +15,7 @@ import (
 	notifRepo "fixio/internal/modules/notification/repository"
 	postRepo "fixio/internal/modules/post/repository"
 	regionRepo "fixio/internal/modules/region/repository"
+	reportRepo "fixio/internal/modules/report/repository"
 	sectorRepo "fixio/internal/modules/sector/repository"
 	voteRepo "fixio/internal/modules/vote/repository"
 
@@ -28,6 +29,7 @@ import (
 	notifService "fixio/internal/modules/notification/usecase"
 	postService "fixio/internal/modules/post/usecase"
 	regionService "fixio/internal/modules/region/usecase"
+	reportService "fixio/internal/modules/report/usecase"
 	sectorService "fixio/internal/modules/sector/usecase"
 	voteService "fixio/internal/modules/vote/usecase"
 
@@ -41,6 +43,7 @@ import (
 	notifCtrl "fixio/internal/modules/notification/delivery/http"
 	postCtrl "fixio/internal/modules/post/delivery/http"
 	regionCtrl "fixio/internal/modules/region/delivery/http"
+	reportCtrl "fixio/internal/modules/report/delivery/http"
 	sectorCtrl "fixio/internal/modules/sector/delivery/http"
 	uploadCtrl "fixio/internal/modules/upload/delivery/http"
 	voteCtrl "fixio/internal/modules/vote/delivery/http"
@@ -67,6 +70,7 @@ type appCore struct {
 	FollowService       followService.FollowService
 	BookmarkService     bookmarkService.BookmarkService
 	NotificationService notifService.NotificationService
+	ReportService       reportService.ReportService
 }
 
 // NewModule creates the DI container and wires all dependencies
@@ -76,17 +80,19 @@ func NewModule(env *config.Environment, db *gorm.DB, cacheStore cache.Cache, sto
 	postRepository := postRepo.NewPostRepository(db)
 	voteRepository := voteRepo.NewVoteRepository(db)
 	commentRepository := commentRepo.NewCommentRepository(db)
+	commentVoteRepository := commentRepo.NewCommentVoteRepository(db)
 	sectorRepository := sectorRepo.NewSectorRepository(db)
 	regionRepository := regionRepo.NewRegionRepository(db)
 	followRepository := followRepo.NewFollowRepository(db)
 	bookmarkRepository := bookmarkRepo.NewBookmarkRepository(db)
 	notifRepository := notifRepo.NewNotificationRepository(db)
+	reportRepository := reportRepo.NewReportRepository(db)
 
 	// 2. Initialize Services
 	authSvc := authService.NewAuthService(userRepository, env, cacheStore)
 	postSvc := postService.NewPostService(postRepository)
 	voteSvc := voteService.NewVoteService(voteRepository, postRepository)
-	commentSvc := commentService.NewCommentService(commentRepository, postRepository)
+	commentSvc := commentService.NewCommentService(commentRepository, commentVoteRepository, postRepository)
 	sectorSvc := sectorService.NewSectorService(sectorRepository)
 	regionSvc := regionService.NewRegionService(regionRepository)
 	moderationSvc := modService.NewModerationService(postRepository, userRepository)
@@ -94,6 +100,7 @@ func NewModule(env *config.Environment, db *gorm.DB, cacheStore cache.Cache, sto
 	followSvc := followService.NewFollowService(followRepository, userRepository)
 	bookmarkSvc := bookmarkService.NewBookmarkService(bookmarkRepository, postRepository)
 	notifSvc := notifService.NewNotificationService(notifRepository)
+	reportSvc := reportService.NewReportService(reportRepository)
 
 	// 3. Initialize Auth Middleware
 	authMw := middleware.NewAuthMiddleware(authSvc)
@@ -113,6 +120,7 @@ func NewModule(env *config.Environment, db *gorm.DB, cacheStore cache.Cache, sto
 		FollowService:       followSvc,
 		BookmarkService:     bookmarkSvc,
 		NotificationService: notifSvc,
+		ReportService:       reportSvc,
 	}
 }
 
@@ -142,6 +150,7 @@ func (m *appCore) Controllers() []network.Controller {
 		voteCtrl.NewVoteController(auth, authz, m.VoteService),
 		commentCtrl.NewCommentController(auth, authz, m.CommentService),
 		commentCtrl.NewCommentDeleteController(auth, authz, m.CommentService),
+		commentCtrl.NewCommentVoteController(auth, authz, m.CommentService),
 		sectorCtrl.NewSectorController(auth, authz, m.SectorService),
 		regionCtrl.NewRegionController(auth, authz, m.RegionService),
 		modCtrl.NewModerationController(auth, authz, m.ModerationService),
@@ -149,6 +158,7 @@ func (m *appCore) Controllers() []network.Controller {
 		followCtrl.NewFollowController(auth, authz, m.FollowService),
 		bookmarkCtrl.NewBookmarkController(auth, authz, m.BookmarkService),
 		notifCtrl.NewNotificationController(auth, authz, m.NotificationService),
+		reportCtrl.NewReportController(auth, authz, m.ReportService),
 	}
 
 	// Register upload controller only when MinIO storage is available
