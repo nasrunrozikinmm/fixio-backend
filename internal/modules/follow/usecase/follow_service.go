@@ -2,10 +2,13 @@ package services
 
 import (
 	"context"
+	"fmt"
 
 	authRepo "fixio/internal/modules/auth/repository"
 	models "fixio/internal/modules/follow/entity"
 	repositories "fixio/internal/modules/follow/repository"
+	notifModels "fixio/internal/modules/notification/entity"
+	notifService "fixio/internal/modules/notification/usecase"
 	"fixio/pkg/apperrors"
 
 	"github.com/google/uuid"
@@ -25,13 +28,15 @@ type FollowService interface {
 type followService struct {
 	followRepo repositories.FollowRepository
 	userRepo   authRepo.UserRepository
+	notifSvc   notifService.NotificationService
 }
 
 // NewFollowService creates a new FollowService
-func NewFollowService(followRepo repositories.FollowRepository, userRepo authRepo.UserRepository) FollowService {
+func NewFollowService(followRepo repositories.FollowRepository, userRepo authRepo.UserRepository, notifSvc notifService.NotificationService) FollowService {
 	return &followService{
 		followRepo: followRepo,
 		userRepo:   userRepo,
+		notifSvc:   notifSvc,
 	}
 }
 
@@ -63,6 +68,22 @@ func (s *followService) Follow(ctx context.Context, followerID, followingID uuid
 	if err != nil {
 		return nil, apperrors.NewInternal("Gagal follow user", err)
 	}
+
+	// Send notification to the followed user
+	follower, _ := s.userRepo.FindBy(ctx, map[string]any{"id": followerID})
+	actorName := "Seseorang"
+	if follower != nil {
+		actorName = follower.Name
+	}
+	_, _ = s.notifSvc.CreateNotification(
+		ctx,
+		followingID,
+		notifModels.NotifTypeNewFollower,
+		followerID,
+		followerID,
+		"user",
+		fmt.Sprintf("%s mulai mengikuti Anda", actorName),
+	)
 
 	return created, nil
 }

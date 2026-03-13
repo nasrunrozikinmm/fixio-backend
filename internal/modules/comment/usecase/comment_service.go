@@ -2,10 +2,14 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"math"
 
+	authRepo "fixio/internal/modules/auth/repository"
 	models "fixio/internal/modules/comment/entity"
 	repositories "fixio/internal/modules/comment/repository"
+	notifModels "fixio/internal/modules/notification/entity"
+	notifService "fixio/internal/modules/notification/usecase"
 	postRepo "fixio/internal/modules/post/repository"
 	"fixio/pkg/apperrors"
 	"fixio/pkg/helpers"
@@ -28,14 +32,24 @@ type commentService struct {
 	commentRepo     repositories.CommentRepository
 	commentVoteRepo repositories.CommentVoteRepository
 	postRepo        postRepo.PostRepository
+	userRepo        authRepo.UserRepository
+	notifSvc        notifService.NotificationService
 }
 
 // NewCommentService creates a new CommentService
-func NewCommentService(commentRepo repositories.CommentRepository, commentVoteRepo repositories.CommentVoteRepository, postRepo postRepo.PostRepository) CommentService {
+func NewCommentService(
+	commentRepo repositories.CommentRepository,
+	commentVoteRepo repositories.CommentVoteRepository,
+	postRepo postRepo.PostRepository,
+	userRepo authRepo.UserRepository,
+	notifSvc notifService.NotificationService,
+) CommentService {
 	return &commentService{
 		commentRepo:     commentRepo,
 		commentVoteRepo: commentVoteRepo,
 		postRepo:        postRepo,
+		userRepo:        userRepo,
+		notifSvc:        notifSvc,
 	}
 }
 
@@ -115,6 +129,38 @@ func (s *commentService) Create(ctx context.Context, userID, postID uuid.UUID, c
 	// Increment post comment count
 	s.postRepo.IncrementCommentCount(ctx, postID, 1)
 
+	// Send notification to post author
+	commenter, _ := s.userRepo.FindBy(ctx, map[string]any{"id": userID})
+	actorName := "Seseorang"
+	if commenter != nil {
+		actorName = commenter.Name
+	}
+	_, _ = s.notifSvc.CreateNotification(
+		ctx,
+		post.UserID,
+		notifModels.NotifTypePostComment,
+		userID,
+		postID,
+		"post",
+		fmt.Sprintf("%s mengomentari post Anda", actorName),
+	)
+
+	// If this is a reply, also notify the parent comment author
+	if parentID != nil {
+		parent, parentErr := s.commentRepo.FindByIDWithUser(ctx, *parentID)
+		if parentErr == nil && parent != nil && parent.UserID != post.UserID {
+			_, _ = s.notifSvc.CreateNotification(
+				ctx,
+				parent.UserID,
+				notifModels.NotifTypePostComment,
+				userID,
+				postID,
+				"post",
+				fmt.Sprintf("%s membalas komentar Anda", actorName),
+			)
+		}
+	}
+
 	return created, nil
 }
 
@@ -171,6 +217,22 @@ func (s *commentService) ToggleVote(ctx context.Context, userID, commentID uuid.
 		}
 		_ = s.commentVoteRepo.IncrementVoteCount(ctx, commentID, 1)
 		voted = true
+
+		// Send notification to comment author
+		voter, _ := s.userRepo.FindBy(ctx, map[string]any{"id": userID})
+		actorName := "Seseorang"
+		if voter != nil {
+			actorName = voter.Name
+		}
+		_, _ = s.notifSvc.CreateNotification(
+			ctx,
+			comment.UserID,
+			notifModels.NotifTypeCommentVote,
+			userID,
+			commentID,
+			"comment",
+			fmt.Sprintf("%s menyukai komentar Anda", actorName),
+		)
 	}
 
 	// Reload to get fresh vote_count

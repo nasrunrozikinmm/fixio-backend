@@ -91,15 +91,15 @@ func NewModule(env *config.Environment, db *gorm.DB, cacheStore cache.Cache, sto
 	// 2. Initialize Services
 	authSvc := authService.NewAuthService(userRepository, env, cacheStore)
 	postSvc := postService.NewPostService(postRepository)
-	voteSvc := voteService.NewVoteService(voteRepository, postRepository)
-	commentSvc := commentService.NewCommentService(commentRepository, commentVoteRepository, postRepository)
+	notifSvc := notifService.NewNotificationService(notifRepository)
+	voteSvc := voteService.NewVoteService(voteRepository, postRepository, userRepository, notifSvc)
+	commentSvc := commentService.NewCommentService(commentRepository, commentVoteRepository, postRepository, userRepository, notifSvc)
 	sectorSvc := sectorService.NewSectorService(sectorRepository)
 	regionSvc := regionService.NewRegionService(regionRepository)
 	moderationSvc := modService.NewModerationService(postRepository, userRepository)
 	adminSvc := adminService.NewAdminService(userRepository, postRepository, db)
-	followSvc := followService.NewFollowService(followRepository, userRepository)
+	followSvc := followService.NewFollowService(followRepository, userRepository, notifSvc)
 	bookmarkSvc := bookmarkService.NewBookmarkService(bookmarkRepository, postRepository)
-	notifSvc := notifService.NewNotificationService(notifRepository)
 	reportSvc := reportService.NewReportService(reportRepository)
 
 	// 3. Initialize Auth Middleware

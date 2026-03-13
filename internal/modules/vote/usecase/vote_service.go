@@ -2,7 +2,11 @@ package services
 
 import (
 	"context"
+	"fmt"
 
+	authRepo "fixio/internal/modules/auth/repository"
+	notifModels "fixio/internal/modules/notification/entity"
+	notifService "fixio/internal/modules/notification/usecase"
 	postRepo "fixio/internal/modules/post/repository"
 	models "fixio/internal/modules/vote/entity"
 	repositories "fixio/internal/modules/vote/repository"
@@ -23,13 +27,17 @@ type VoteService interface {
 type voteService struct {
 	voteRepo repositories.VoteRepository
 	postRepo postRepo.PostRepository
+	userRepo authRepo.UserRepository
+	notifSvc notifService.NotificationService
 }
 
 // NewVoteService creates a new VoteService
-func NewVoteService(voteRepo repositories.VoteRepository, postRepo postRepo.PostRepository) VoteService {
+func NewVoteService(voteRepo repositories.VoteRepository, postRepo postRepo.PostRepository, userRepo authRepo.UserRepository, notifSvc notifService.NotificationService) VoteService {
 	return &voteService{
 		voteRepo: voteRepo,
 		postRepo: postRepo,
+		userRepo: userRepo,
+		notifSvc: notifSvc,
 	}
 }
 
@@ -94,6 +102,24 @@ func (s *voteService) Vote(ctx context.Context, userID, postID uuid.UUID, voteTy
 	created, err := s.voteRepo.Create(ctx, vote)
 	if err != nil {
 		return nil, apperrors.NewInternal("Gagal membuat vote", err)
+	}
+
+	// Send notification to post author on upvote (not on toggle/switch, not on downvote)
+	if existingVote == nil && voteType == helpers.VoteUp {
+		voter, _ := s.userRepo.FindBy(ctx, map[string]any{"id": userID})
+		actorName := "Seseorang"
+		if voter != nil {
+			actorName = voter.Name
+		}
+		_, _ = s.notifSvc.CreateNotification(
+			ctx,
+			post.UserID,
+			notifModels.NotifTypePostVote,
+			userID,
+			postID,
+			"post",
+			fmt.Sprintf("%s menyukai post Anda", actorName),
+		)
 	}
 
 	return created, nil

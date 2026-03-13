@@ -9,9 +9,10 @@ import (
 
 // Notification types
 const (
-	NotifTypeNewFollower = "new_follower"
-	NotifTypePostVote    = "post_vote"
-	NotifTypePostComment = "post_comment"
+	NotifTypeNewFollower  = "new_follower"
+	NotifTypePostVote     = "post_vote"
+	NotifTypePostComment  = "post_comment"
+	NotifTypeCommentVote  = "comment_vote"
 )
 
 // Notification represents an in-app notification for a user
